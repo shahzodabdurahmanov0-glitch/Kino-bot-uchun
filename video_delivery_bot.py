@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from telegram import Update
+from telegram import Update, MessageOriginChannel
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 logging.basicConfig(level=logging.INFO)
@@ -54,14 +54,22 @@ async def handle_admin_forward(update: Update, context: ContextTypes.DEFAULT_TYP
     msg = update.message
     if update.effective_user.id != ADMIN_ID:
         return
-    if not msg.forward_from_chat or msg.forward_from_chat.id != CHANNEL_ID:
-        await msg.reply_text("Bu xabar belgilangan kanaldan forward qilinmagan.")
+
+    origin = msg.forward_origin
+    if not origin or not isinstance(origin, MessageOriginChannel):
+        await msg.reply_text("Bu xabar biror kanaldan forward qilinmagan.")
+        return
+    if origin.chat.id != CHANNEL_ID:
+        await msg.reply_text(
+            f"Bu video ombor kanalidan emas (kanal ID: {origin.chat.id}). "
+            f"Kutilgan ombor kanal ID: {CHANNEL_ID}."
+        )
         return
 
-    context.user_data["pending_message_id"] = msg.forward_from_message_id
+    context.user_data["pending_message_id"] = origin.message_id
     await msg.reply_text(
-        f"Bu videoga qaysi raqamni bog'laymiz? (kanal xabar ID: {msg.forward_from_message_id})\n"
-        "Raqamni oddiy xabar sifatida yuboring."
+        f"Bu videoga qaysi kodni bog'laymiz? (kanal xabar ID: {origin.message_id})\n"
+        "Kodni oddiy xabar sifatida yuboring."
     )
 
 
@@ -100,7 +108,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("list", list_videos))
     app.add_handler(MessageHandler(
-        filters.FORWARDED & (filters.VIDEO | filters.Document.ALL),
+        filters.VIDEO | filters.Document.ALL,
         handle_admin_forward,
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
